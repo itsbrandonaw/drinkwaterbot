@@ -5,6 +5,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.base import JobLookupError
 
 TOKEN = '7815381432:AAFbTCQV6ytHVwDG4auEQ77_cVUtV9wdOB0'  # Your bot token here
+BOT_USERNAME: Final = '@glugglugbot'
+
 
 # Constants
 TARGET_WATER_INTAKE = 2000  # Daily water intake target in milliliters (adjust as needed)
@@ -26,13 +28,26 @@ scheduler.start()
 # State for conversation handler
 WATER_INPUT, SET_REMINDER = range(2)
 
-# Start Command
+# Command to display instructions
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Welcome to the Drinking Water Tracker Bot! Type /help to see available commands.")
+    instructions = (
+        "Welcome to your Water Tracker bot! Here are the commands you can use:\n\n"
+        "/track - Log your water intake\n"
+        "/status - Check your daily water progress\n"
+        "/reminder - Set a reminder to drink water\n"
+        "/help - Get instructions on how to use the bot"
+    )
+    await update.message.reply_text(instructions)
 
-# Help Command
+# Command to display help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Use /track to input your daily water intake, /show to check your progress, and /setreminder to set reminders.")
+    instructions = (
+        "This bot helps you track your water intake. Here's how it works:\n\n"
+        "/track - Log the amount of water you drink\n"
+        "/status - See how much water you've drunk out of your goal for the day\n"
+        "/reminder - Set a reminder to drink water"
+    )
+    await update.message.reply_text(instructions)
 
 # Track Command
 async def track_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
