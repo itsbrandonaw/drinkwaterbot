@@ -3,31 +3,17 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.jobstores.base import JobLookupError
 
-TOKEN = '7815381432:AAFbTCQV6ytHVwDG4auEQ77_cVUtV9wdOB0'  # Your bot token here
+TOKEN: Final = '7815381432:AAFbTCQV6ytHVwDG4auEQ77_cVUtV9wdOB0'
 BOT_USERNAME: Final = '@glugglugbot'
 
-
 # Constants
-TARGET_WATER_INTAKE = 2000  # Daily water intake target in milliliters (adjust as needed)
-ENCOURAGING_MESSAGES = [
-    "Great job, keep going!",
-    "You're doing awesome!",
-    "Keep it up, you're almost there!",
-    "Drink up, stay hydrated!",
-    "Hydration is key! You're doing well!"
-]
+TASK_NAME, TASK_DUE_DATE, WATER_INPUT, REMINDER_DAYS = range(4)
 
-# Dictionary to store user's water intake
+# Dictionary to store user data
 user_data = {}
-
-# Initialize scheduler
 scheduler = BackgroundScheduler()
 scheduler.start()
-
-# State for conversation handler
-WATER_INPUT, SET_REMINDER = range(2)
 
 # Command to display instructions
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -50,132 +36,106 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(instructions)
 
-# Track Command
+# Water input
 async def track_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Prompt the user to input how much water they've drunk"""
-    await update.message.reply_text("How much water did you drink today (in milliliters)?")
-
+    await update.message.reply_text('How much water did you drink today? Please input the amount in milliliters.')
     return WATER_INPUT
 
-# Track Water Input
 async def water_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the user input for water intake"""
+    water_amount = update.message.text.strip()
+
     try:
-        water_drunk = int(update.message.text)
+        water_amount = int(water_amount)
         user_id = update.message.from_user.id
+        user_data[user_id] = user_data.get(user_id, {'daily_goal': 2000, 'water_drank': 0})
+        user_data[user_id]['water_drank'] += water_amount
 
-        # Initialize user's data if not already
-        if user_id not in user_data:
-            user_data[user_id] = {'total': 0, 'target': TARGET_WATER_INTAKE}
+        remaining = user_data[user_id]['daily_goal'] - user_data[user_id]['water_drank']
 
-        # Update the user's water intake
-        user_data[user_id]['total'] += water_drunk
-
-        # Get the current intake and target
-        total_drunk = user_data[user_id]['total']
-        target = user_data[user_id]['target']
-
-        # Send encouraging message
-        encouragement = ENCOURAGING_MESSAGES[total_drunk % len(ENCOURAGING_MESSAGES)]  # Cycle through messages
-
-        # Check if the user has reached the target
-        if total_drunk >= target:
-            await update.message.reply_text(f"🎉 Congratulations! You've reached your daily water goal of {target}ml! Well done!")
-            user_data[user_id]['total'] = 0  # Reset the water intake for the next day
+        if remaining <= 0:
+            await update.message.reply_text("🎉 Congratulations, you've met your daily water goal! Well done!")
         else:
-            await update.message.reply_text(f"Nice! You've drunk {total_drunk}ml out of {target}ml today. {encouragement}")
+            await update.message.reply_text(f"Great job! You've drunk {water_amount}ml. Keep going! "
+                                           f"You still need {remaining}ml to meet your daily goal.")
 
         return ConversationHandler.END
+
     except ValueError:
-        await update.message.reply_text("Please input a valid number (in milliliters). Try again.")
+        await update.message.reply_text("Please input a valid number of milliliters.")
         return WATER_INPUT
 
-# Show Water Intake Command
-async def show_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Display user's current progress"""
-    user_id = update.message.from_user.id
+# Set reminder to drink water
+async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("How many hours before you want to be reminded to drink water? (e.g., 2 hours before).")
+    return REMINDER_DAYS
 
-    if user_id not in user_data or user_data[user_id]['total'] == 0:
-        await update.message.reply_text("You haven't tracked your water intake yet! Use /track to start.")
-        return
-
-    total_drunk = user_data[user_id]['total']
-    target = user_data[user_id]['target']
-    await update.message.reply_text(f"Your current progress: {total_drunk}ml out of {target}ml today. Keep it up!")
-
-# Set Reminder Command
-async def setreminder_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Set a reminder to drink water"""
-    await update.message.reply_text("How often would you like to be reminded to drink water (in hours)?")
-    return SET_REMINDER
-
-# Handle Reminder Input
-async def reminder_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def reminder_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        reminder_interval = int(update.message.text)
+        reminder_hours = int(update.message.text)
         user_id = update.message.from_user.id
+        reminder_time = datetime.now() + timedelta(hours=reminder_hours)
 
-        # Schedule a daily reminder
-        scheduler.add_job(
-            send_reminder,
-            'interval',
-            hours=reminder_interval,
-            args=[user_id],
-            id=f"reminder_{user_id}",
-            replace_existing=True
-        )
+        # Schedule the reminder job
+        job_id = f"reminder_{user_id}"
+        scheduler.add_job(send_reminder, 'date', run_date=reminder_time, args=[user_id], id=job_id, replace_existing=True)
 
-        await update.message.reply_text(f"Reminder set! I'll remind you every {reminder_interval} hours to drink water.")
+        await update.message.reply_text(f"Reminder set for {reminder_hours} hours before your next water intake!")
+
         return ConversationHandler.END
-    except ValueError:
-        await update.message.reply_text("Please enter a valid number for reminder interval (in hours).")
-        return SET_REMINDER
 
-# Send Reminder to Drink Water
+    except ValueError:
+        await update.message.reply_text("Please input a valid number of hours.")
+        return REMINDER_DAYS
+
+# Send reminder to user
 async def send_reminder(user_id: int):
-    """Send a reminder to drink water"""
     chat_id = user_id
     message = "⏰ Time to drink some water! Stay hydrated!"
-    try:
-        await context.bot.send_message(chat_id=chat_id, text=message)
-    except JobLookupError:
-        pass  # The job may have been removed, so we ignore the error
+    await context.bot.send_message(chat_id=chat_id, text=message)
 
-# Cancel Reminder Command
-async def cancel_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancel the reminder"""
+# Command to show the current progress
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    try:
-        scheduler.remove_job(f"reminder_{user_id}")
-        await update.message.reply_text("Your reminder has been canceled.")
-    except JobLookupError:
-        await update.message.reply_text("You don't have any active reminders.")
+    user_info = user_data.get(user_id, {'daily_goal': 2000, 'water_drank': 0})
 
+    remaining = user_info['daily_goal'] - user_info['water_drank']
+
+    if remaining > 0:
+        await update.message.reply_text(f"You've drunk {user_info['water_drank']}ml out of your daily goal of {user_info['daily_goal']}ml. Keep it up! You need {remaining}ml more!")
+    else:
+        await update.message.reply_text("🎉 You've reached your daily goal! Great job!")
+
+# Conversation flow
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancel the current conversation."""
+    await update.message.reply_text("Okay, the current task setup has been canceled!")
     return ConversationHandler.END
 
-# Conversation Handler Setup
-conversation_handler = ConversationHandler(
-    entry_points=[CommandHandler('track', track_command), CommandHandler('setreminder', setreminder_command)],
-    states={
-        WATER_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, water_input)],
-        SET_REMINDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, reminder_input)],
-    },
-    fallbacks=[CommandHandler('cancel', cancel_reminder)]
-)
-
-# Main Function to Run the Bot
-def main():
-    """Start the bot"""
+# Main function to set up handlers and run the bot
+if __name__ == '__main__':
+    print('Starting bot...')
     app = Application.builder().token(TOKEN).build()
 
-    # Add command handlers
+    # Add handlers
     app.add_handler(CommandHandler('start', start_command))
     app.add_handler(CommandHandler('help', help_command))
-    app.add_handler(CommandHandler('show', show_command))
+    app.add_handler(CommandHandler('track', track_command))
+    app.add_handler(CommandHandler('status', status_command))
+    app.add_handler(CommandHandler('reminder', set_reminder))
+
+    # Define conversation handler
+    conversation_handler = ConversationHandler(
+        entry_points=[CommandHandler('track', track_command), CommandHandler('reminder', set_reminder)],
+        states={
+            WATER_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, water_input)],
+            REMINDER_DAYS: [MessageHandler(filters.TEXT & ~filters.COMMAND, reminder_days)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    # Add conversation handler to the application
     app.add_handler(conversation_handler)
 
-    # Run the bot
-    app.run_polling()
-
-if __name__ == '__main__':
-    main()
+    # Polling
+    print('Polling bot...')
+    app.run_polling(poll_interval=3)
