@@ -1,7 +1,7 @@
 from typing import Final
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.base import JobLookupError
 from dotenv import load_dotenv
@@ -21,15 +21,18 @@ BOT_USERNAME: Final = "@glugglugbot"
 
 # Constants
 TARGET_WATER_INTAKE = 2000  # Daily water intake target in milliliters (adjust as needed)
+WAKE_UP_TIME = time(6, 0)   # Waking up at 8:00 AM
+SLEEP_TIME = time(23, 0)    # Going to bed at 11:00 PM
 ENCOURAGING_MESSAGES = [
     "Great job, keep going!",
     "You're doing awesome!",
     "Keep it up, you're almost there!",
     "Drink up, stay hydrated!",
     "Hydration is key! You're doing well!"
+    "Half full water bottle drink up!"
 ]
 
-# Dictionary to store user's water intake
+# Dictionary to store user's water intake and reminder settings
 user_data = {}
 
 # Initialize scheduler
@@ -39,19 +42,34 @@ scheduler.start()
 # State for conversation handler
 WATER_INPUT, SET_REMINDER = range(2)
 
+# Utility Function: Calculate target water intake at a given time
+def calculate_target_water(current_time: datetime) -> int:
+    """Calculate the target water intake based on the current time."""
+    start = datetime.combine(current_time.date(), WAKE_UP_TIME)
+    end = datetime.combine(current_time.date(), SLEEP_TIME)
+
+    # Total waking duration in seconds
+    total_duration = (end - start).total_seconds()
+
+    # Elapsed time since waking up in seconds
+    elapsed_time = (current_time - start).total_seconds()
+
+    # Avoid negative values before waking up
+    if elapsed_time < 0:
+        elapsed_time = 0
+
+    # Calculate proportional water intake
+    target = int((elapsed_time / total_duration) * TARGET_WATER_INTAKE)
+    return target
+
 # Start Command
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Welcome to the Drinking Water Tracker Bot! Type /help to see available commands.")
-
-# Help Command
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Use /track to input your daily water intake, /show to check your progress, and /setreminder to set reminders.")
+    await update.message.reply_text("Welcome to the Drinking Water Tracker Bot!" + "\n" + "Use /track to input your daily water intake, /show to check your progress, and /setreminder to set reminders.")
 
 # Track Command
 async def track_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Prompt the user to input how much water they've drunk"""
     await update.message.reply_text("How much water did you drink today (in milliliters)?")
-
     return WATER_INPUT
 
 # Track Water Input
@@ -112,7 +130,7 @@ async def reminder_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reminder_interval = int(update.message.text)
         user_id = update.message.from_user.id
 
-        # Schedule a daily reminder
+        # Schedule a personalized reminder
         scheduler.add_job(
             send_reminder,
             'interval',
@@ -130,10 +148,14 @@ async def reminder_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Send Reminder to Drink Water
 async def send_reminder(user_id: int):
-    """Send a reminder to drink water"""
+    """Send a personalized reminder to drink water"""
     chat_id = user_id
-    message = "⏰ Time to drink some water! Stay hydrated!"
+    current_time = datetime.now()
+    target_by_now = calculate_target_water(current_time)
+    how_much_drank = water_input(WATER_INPUT)
+    message = f"⏰ It's {current_time.strftime('%H:%M')}! By now, you should have drunk approximately {target_by_now}ml of water. You have drank {how_much_drank}ml. Stay hydrated!"
     try:
+        # Assuming `context` is globally accessible or passed explicitly
         await context.bot.send_message(chat_id=chat_id, text=message)
     except JobLookupError:
         pass  # The job may have been removed, so we ignore the error
@@ -167,7 +189,6 @@ def main():
 
     # Add command handlers
     app.add_handler(CommandHandler('start', start_command))
-    app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CommandHandler('show', show_command))
     app.add_handler(conversation_handler)
 
