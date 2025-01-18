@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.base import JobLookupError
 
-TOKEN = 'YOUR_BOT_TOKEN'  # Your bot token here
+TOKEN = '7815381432:AAFbTCQV6ytHVwDG4auEQ77_cVUtV9wdOB0'  # Your bot token here
 
 # Constants
 TARGET_WATER_INTAKE = 2000  # Daily water intake target in milliliters (adjust as needed)
