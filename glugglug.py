@@ -3,8 +3,19 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.base import JobLookupError
+from dotenv import load_dotenv
+import os
 
-TOKEN = '7815381432:AAFbTCQV6ytHVwDG4auEQ77_cVUtV9wdOB0'  # Your bot token here
+# Load environment variables from the .env file
+load_dotenv()
+
+# Retrieve the bot token from environment variables
+TOKEN = os.getenv("BOT_TOKEN")
+
+# Ensure the token is successfully loaded
+if TOKEN is None:
+    raise ValueError("Bot token not found. Please set the BOT_TOKEN in the .env file.")
+
 
 # Constants
 TARGET_WATER_INTAKE = 2000  # Daily water intake target in milliliters (adjust as needed)
