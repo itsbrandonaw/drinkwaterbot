@@ -1,3 +1,4 @@
+from typing import Final
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 from datetime import datetime, timedelta
@@ -16,6 +17,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 if TOKEN is None:
     raise ValueError("Bot token not found. Please set the BOT_TOKEN in the .env file.")
 
+BOT_USERNAME: Final = "@glugglugbot"
 
 # Constants
 TARGET_WATER_INTAKE = 2000  # Daily water intake target in milliliters (adjust as needed)
@@ -170,7 +172,8 @@ def main():
     app.add_handler(conversation_handler)
 
     # Run the bot
-    app.run_polling()
+    print("Polling...")
+    app.run_polling(poll_interval=3)
 
 if __name__ == '__main__':
     main()
